@@ -1,0 +1,62 @@
+name: MT7981 BL2 MSDC Fix Test
+
+on:
+  push:
+    branches:
+      - fix-mt7981-bl2-msdc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq $(cat depends/ubuntu-22.04)
+
+      - name: Build variant A - interrupt ordering and recovery
+        run: |
+          set -euxo pipefail
+          chmod +x compile_atf.sh
+          python3 tools/patch_mt7981_bl2_msdc.py --tree atf-20250711
+          git diff --check
+          VERSION=2025 CFG_SUBDIR=normal OUTPUT_DIR=output_bl2_A \
+            ./compile_atf.sh normal/mt7981-ddr4-emmc
+          mkdir -p artifacts/A-msdc-recovery
+          cp -av output_bl2_A/* artifacts/A-msdc-recovery/
+
+      - name: Build variant B - recovery plus clock-enable parity with U-Boot
+        run: |
+          set -euxo pipefail
+          git checkout -- atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c
+          rm -rf atf-20250711/build output_bl2_B
+          python3 tools/patch_mt7981_bl2_msdc.py --tree atf-20250711 --clock-enable-fix
+          git diff --check
+          VERSION=2025 CFG_SUBDIR=normal OUTPUT_DIR=output_bl2_B \
+            ./compile_atf.sh normal/mt7981-ddr4-emmc
+          mkdir -p artifacts/B-msdc-recovery-clock
+          cp -av output_bl2_B/* artifacts/B-msdc-recovery-clock/
+
+      - name: Checksums
+        run: |
+          set -euxo pipefail
+          find artifacts -type f -print0 | sort -z | xargs -0 sha256sum | tee artifacts/SHA256SUMS.txt
+          find artifacts -maxdepth 3 -type f -ls
+
+      - name: Upload test BL2 binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt7981-ddr4-emmc-msdc-fix-test
+          path: artifacts/
+          retention-days: 14
+          if-no-files-found: error
