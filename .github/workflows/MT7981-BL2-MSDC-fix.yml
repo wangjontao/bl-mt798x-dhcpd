@@ -63,9 +63,10 @@ jobs:
           git rm tools/patch_mt7981_bl2_msdc.py
           git rm .github/workflows/MT7981-BL2-MSDC-fix.yml
 
-          git add \
-            atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c \
-            .github/workflows/BL2-build.yml
+          # atf-* is intentionally ignored by this repository, but this source
+          # file is part of the vendored ATF tree we are deliberately updating.
+          git add -f atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c
+          git add .github/workflows/BL2-build.yml
 
           git diff --cached --check
           git status --short
