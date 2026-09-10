@@ -479,6 +479,12 @@ static int msdc_start_command(struct msdc_host *host, struct mmc_cmd *cmd)
 	if (!msdc_cmd_is_ready(host))
 		return -EIO;
 
+	/* Match U-Boot recovery: do not start a command with stale FIFO data. */
+	if (msdc_fifo_tx_bytes(host) || msdc_fifo_rx_bytes(host)) {
+		ERROR("MSDC: TX/RX FIFO non-empty before command, resetting\n");
+		msdc_reset_hw(host);
+	}
+
 	msdc_fifo_clr(host);
 
 	host->last_resp_type = cmd->resp_type;
@@ -489,7 +495,13 @@ static int msdc_start_command(struct msdc_host *host, struct mmc_cmd *cmd)
 	if (new_xfer && xfer_size)
 		blocks = xfer_blocks;
 
+	/*
+	 * Clear stale command AND data interrupt status before issuing the
+	 * command. U-Boot does this before CMD17/CMD18; clearing DATA_INTS
+	 * after the command can race with a freshly completed transfer.
+	 */
 	mmio_write_32((uintptr_t)&host->base->msdc_int, CMD_INTS_MASK);
+	mmio_write_32((uintptr_t)&host->base->msdc_int, DATA_INTS_MASK);
 	mmio_write_32((uintptr_t)&host->base->sdc_blk_num, blocks);
 	mmio_write_32((uintptr_t)&host->base->sdc_arg, cmd->cmd_arg);
 	mmio_write_32((uintptr_t)&host->base->sdc_cmd, rawcmd);
@@ -628,6 +640,9 @@ static void msdc_set_mclk(struct msdc_host *host, uint32_t hz)
 	readl_poll_timeout(&host->base->msdc_cfg, reg,
 			   reg & MSDC_CFG_CKSTB, 1000000);
 
+	/* Keep the bus clock enabled after changing the divider, as U-Boot does. */
+	mmio_setbits_32((uintptr_t)&host->base->msdc_cfg, MSDC_CFG_CKPDN);
+
 	host->sclk = sclk;
 	host->mclk = hz;
 
@@ -732,8 +747,6 @@ static int mtk_mmc_read(int lba, uintptr_t buf, size_t size)
 	cmd_idx = mmio_read_32((uintptr_t)&host->base->sdc_cmd) & 0x3f;
 	cmd_arg = mmio_read_32((uintptr_t)&host->base->sdc_arg);
 
-	mmio_write_32((uintptr_t)&host->base->msdc_int, DATA_INTS_MASK);
-
 	while (1) {
 		status = mmio_read_32((uintptr_t)&host->base->msdc_int);
 		mmio_write_32((uintptr_t)&host->base->msdc_int, status);
@@ -769,6 +782,13 @@ static int mtk_mmc_read(int lba, uintptr_t buf, size_t size)
 			}
 			break;
 		}
+	}
+
+	/* Match U-Boot: recover the controller and FIFO after data errors. */
+	if (ret) {
+		ERROR("MSDC: read failed (%d), resetting controller\n", ret);
+		msdc_reset_hw(host);
+		msdc_fifo_clr(host);
 	}
 
 	return ret;
