@@ -1,4 +1,4 @@
-name: MT7981 BL2 MSDC Fix Test
+name: Finalize MT7981 BL2 MSDC Fix
 
 on:
   push:
@@ -7,14 +7,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  finalize:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install build dependencies
         env:
@@ -24,39 +26,48 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq $(cat depends/ubuntu-22.04)
 
-      - name: Build variant A - interrupt ordering and recovery
+      - name: Apply proven B fix to source
+        run: |
+          set -euxo pipefail
+          python3 tools/patch_mt7981_bl2_msdc.py \
+            --tree atf-20250711 \
+            --clock-enable-fix
+
+          # Make this fork the default source for its normal BL2 workflow,
+          # otherwise workflow_dispatch would clone the upstream repository
+          # and miss this source-level fix unless REPO_URL is overridden.
+          sed -i "s#default: 'https://github.com/Yuzhii0718/bl-mt798x-dhcpd'#default: 'https://github.com/wangjontao/bl-mt798x-dhcpd'#" \
+            .github/workflows/BL2-build.yml
+
+          git diff --check
+          grep -n "MSDC_CFG_CKPDN" atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c
+
+      - name: Build final MT7981 DDR4 eMMC BL2
         run: |
           set -euxo pipefail
           chmod +x compile_atf.sh
-          python3 tools/patch_mt7981_bl2_msdc.py --tree atf-20250711
-          git diff --check
-          VERSION=2025 CFG_SUBDIR=normal OUTPUT_DIR=output_bl2_A \
+          VERSION=2025 CFG_SUBDIR=normal OUTPUT_DIR=output_bl2_final \
             ./compile_atf.sh normal/mt7981-ddr4-emmc
-          mkdir -p artifacts/A-msdc-recovery
-          cp -av output_bl2_A/* artifacts/A-msdc-recovery/
+          test -d output_bl2_final
+          test -n "$(find output_bl2_final -type f -name '*.img' -print -quit)"
+          sha256sum output_bl2_final/*.img
 
-      - name: Build variant B - recovery plus clock-enable parity with U-Boot
+      - name: Commit clean source-level fix
         run: |
           set -euxo pipefail
-          git checkout -- atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c
-          rm -rf atf-20250711/build output_bl2_B
-          python3 tools/patch_mt7981_bl2_msdc.py --tree atf-20250711 --clock-enable-fix
-          git diff --check
-          VERSION=2025 CFG_SUBDIR=normal OUTPUT_DIR=output_bl2_B \
-            ./compile_atf.sh normal/mt7981-ddr4-emmc
-          mkdir -p artifacts/B-msdc-recovery-clock
-          cp -av output_bl2_B/* artifacts/B-msdc-recovery-clock/
+          git config user.name "wangjontao"
+          git config user.email "54728149+wangjontao@users.noreply.github.com"
 
-      - name: Checksums
-        run: |
-          set -euxo pipefail
-          find artifacts -type f -print0 | sort -z | xargs -0 sha256sum | tee artifacts/SHA256SUMS.txt
-          find artifacts -maxdepth 3 -type f -ls
+          # The temporary patch helper and A/B test workflow are no longer
+          # needed once the proven B changes live directly in the ATF source.
+          git rm tools/patch_mt7981_bl2_msdc.py
+          git rm .github/workflows/MT7981-BL2-MSDC-fix.yml
 
-      - name: Upload test BL2 binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: mt7981-ddr4-emmc-msdc-fix-test
-          path: artifacts/
-          retention-days: 14
-          if-no-files-found: error
+          git add \
+            atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c \
+            .github/workflows/BL2-build.yml
+
+          git diff --cached --check
+          git status --short
+          git commit -m "mt7981: fix BL2 MSDC clock and read recovery"
+          git push origin HEAD:fix-mt7981-bl2-msdc
