@@ -32,13 +32,6 @@ jobs:
           python3 tools/patch_mt7981_bl2_msdc.py \
             --tree atf-20250711 \
             --clock-enable-fix
-
-          # Make this fork the default source for its normal BL2 workflow,
-          # otherwise workflow_dispatch would clone the upstream repository
-          # and miss this source-level fix unless REPO_URL is overridden.
-          sed -i "s#default: 'https://github.com/Yuzhii0718/bl-mt798x-dhcpd'#default: 'https://github.com/wangjontao/bl-mt798x-dhcpd'#" \
-            .github/workflows/BL2-build.yml
-
           git diff --check
           grep -n "MSDC_CFG_CKPDN" atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c
 
@@ -52,22 +45,15 @@ jobs:
           test -n "$(find output_bl2_final -type f -name '*.img' -print -quit)"
           sha256sum output_bl2_final/*.img
 
-      - name: Commit clean source-level fix
+      - name: Commit source-level B fix
         run: |
           set -euxo pipefail
           git config user.name "wangjontao"
           git config user.email "54728149+wangjontao@users.noreply.github.com"
 
-          # The temporary patch helper and A/B test workflow are no longer
-          # needed once the proven B changes live directly in the ATF source.
-          git rm tools/patch_mt7981_bl2_msdc.py
-          git rm .github/workflows/MT7981-BL2-MSDC-fix.yml
-
-          # atf-* is intentionally ignored by this repository, but this source
-          # file is part of the vendored ATF tree we are deliberately updating.
+          # atf-* is intentionally ignored by this repository. Force-add only
+          # the proven source change; workflow cleanup is handled separately.
           git add -f atf-20250711/plat/mediatek/apsoc_common/drivers/mmc/mtk-sd.c
-          git add .github/workflows/BL2-build.yml
-
           git diff --cached --check
           git status --short
           git commit -m "mt7981: fix BL2 MSDC clock and read recovery"
