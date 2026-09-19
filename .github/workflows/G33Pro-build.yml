@@ -1,0 +1,62 @@
+name: G33Pro BL2 and FIP Build
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/G33Pro-build.yml'
+      - 'atf-20240117-bacca82a8/configs/mt7981_gielink_g33pro_defconfig'
+      - 'uboot-mtk-20250711/arch/arm/dts/mt7981-gielink_g33pro.dts'
+      - 'uboot-mtk-20250711/configs/mt7981_gielink_g33pro_defconfig'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install $(cat depends/ubuntu-22.04)
+          sudo apt-get -qq install rename tar
+
+      - name: Build GIELINK G33 Pro SP2
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./build.sh
+          SILENT=Y \
+          BOARD=gielink_g33pro \
+          SOC=mt7981 \
+          VERSION=SP2 \
+          VARIANT=default \
+          FIXED_MTDPARTS=1 \
+          MULTI_LAYOUT=0 \
+          COPY_BL2=1 \
+          FSTHEME=bootstrap \
+          ./build.sh
+
+      - name: Show output
+        if: always()
+        run: |
+          echo "===== output ====="
+          find output -maxdepth 2 -type f -printf '%p %k KB\n' 2>/dev/null || true
+
+      - name: Upload G33 Pro bootloader
+        uses: actions/upload-artifact@v4
+        with:
+          name: G33Pro-SP2-BL2-FIP
+          path: |
+            output/*gielink_g33pro*
+          if-no-files-found: error
+          retention-days: 30
