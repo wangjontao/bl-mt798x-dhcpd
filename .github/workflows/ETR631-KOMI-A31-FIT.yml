@@ -1,0 +1,23 @@
+name: ETR631 KOMI A31 Ubootmod FIT
+on:
+  push:
+    branches: [codex/etr631-komi-a31-fit]
+    paths: ['.github/workflows/ETR631-KOMI-A31-FIT.yml', 'scripts/build-etr631-komi-fit.sh', 'scripts/etr631-layout-note.txt']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static nodejs npm python3-setuptools
+      - name: Build and verify ETR631 bootloader
+        run: bash scripts/build-etr631-komi-fit.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ETR631-KOMI-A31-ubootmod-FIT
+          path: output/
+          if-no-files-found: error
