@@ -1,0 +1,23 @@
+name: CMCC A10 256MB Ubootmod FIT
+on:
+  push:
+    branches: [codex/cmcc-a10-ubootmod]
+    paths: ['.github/workflows/CMCC-A10-Ubootmod.yml', 'scripts/build-cmcc-a10-fit.sh', 'atf-20250711/configs/mt7981_cmcc_a10-256m_defconfig']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static nodejs npm python3-setuptools
+      - name: Build and verify A10 bootloader
+        run: bash scripts/build-cmcc-a10-fit.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CMCC-A10-256MB-ubootmod-FIT
+          path: output/
+          if-no-files-found: error
