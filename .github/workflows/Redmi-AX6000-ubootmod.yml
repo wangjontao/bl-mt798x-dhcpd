@@ -68,8 +68,12 @@ jobs:
           assert 'CONFIG_ENABLE_NAND_NMBM=y' not in uc
           assert 'CONFIG_MEDIATEK_MULTI_MTD_LAYOUT=y' not in uc
           assert 'CONFIG_MTK_WEB_FAILSAFE=y' in uc
-          assert '_NAND_SKIP_BAD=y' in ac and '_NAND_NMBM=y' not in ac
-          assert 'OVERRIDE_FIP_BASE=0x380000' in ac
+          (Path('build-logs')/'atf.config.txt').write_text(ac)
+          (Path('build-logs')/'u-boot.config.txt').write_text(uc)
+          actual=dict(line.split('=',1) for line in ac.splitlines() if '=' in line and not line.startswith('#'))
+          print('Actual ATF NAND/FIP configuration:', {k:v for k,v in actual.items() if 'NAND' in k or 'FIP_BASE' in k or 'FIP_SIZE' in k})
+          assert actual.get('_NAND_SKIP_BAD')=='y' and actual.get('_NAND_NMBM')!='y'
+          assert int(actual['OVERRIDE_FIP_BASE'],0)==0x380000
           fip=a/'build/mt7986/release/fip.bin';bl2=a/'build/mt7986/release/bl2.img'
           assert 0<fip.stat().st_size<=0x200000
           assert 0<bl2.stat().st_size<=0x100000
