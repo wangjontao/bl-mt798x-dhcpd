@@ -1,0 +1,96 @@
+name: Redmi AX6000 OpenWrt ubootmod bootloader
+run-name: 'Redmi AX6000 · raw NAND 0x580000 · FIT · SP1'
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/redmi-ax6000-ubootmod-fit]
+    paths:
+      - .github/workflows/Redmi-AX6000-ubootmod.yml
+      - uboot-mtk-20250711/configs-fit/mt7986_redmi_ax6000_defconfig
+      - atf-20240117-bacca82a8/configs/mt7986_redmi_ax6000_defconfig
+      - document/REDMI-AX6000-UBOOTMOD.md
+permissions:
+  contents: read
+concurrency:
+  group: redmi-ax6000-ubootmod-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static python-is-python3 python3-pyelftools swig python3-dev bc uuid-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build matching FIP and BL2
+        env:
+          BOARD: redmi_ax6000
+          SOC: mt7986
+          VERSION: SP1
+          VARIANT: ubootmod
+          FSTHEME: bootstrap
+          FIXED_MTDPARTS: '0'
+          MULTI_LAYOUT: '0'
+          COPY_BL2: '1'
+          FIP_COMPRESS: '0'
+          SILENT: 'Y'
+          CROSS_COMPILE: aarch64-linux-gnu-
+        run: |
+          set -euo pipefail
+          mkdir -p build-logs
+          bash -n build.sh
+          bash build.sh 2>&1 | tee build-logs/redmi-ubootmod.log
+      - name: Validate actual build configuration and package
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,struct,json,shutil,subprocess
+          u=Path('uboot-mtk-20250711');a=Path('atf-20240117-bacca82a8')
+          uc=(u/'.config').read_text();ac=(a/'build/.config').read_text()
+          parts='spi-nand0:1024k(bl2),256k(Nvram),256k(Bdata),2048k(factory),2048k(fip),-(ubi)'
+          assert 'CONFIG_MTDPARTS_DEFAULT="'+parts+'"' in uc
+          assert 'CONFIG_MTK_DEFAULT_FIT_BOOT_CONF="config-1"' in uc
+          assert 'CONFIG_ENV_UBI_PART="ubi"' in uc
+          assert 'CONFIG_ENABLE_NAND_NMBM=y' not in uc
+          assert 'CONFIG_MEDIATEK_MULTI_MTD_LAYOUT=y' not in uc
+          assert 'CONFIG_MTK_WEB_FAILSAFE=y' in uc
+          assert '_NAND_SKIP_BAD=y' in ac and '_NAND_NMBM=y' not in ac
+          assert 'OVERRIDE_FIP_BASE=0x380000' in ac
+          fip=a/'build/mt7986/release/fip.bin';bl2=a/'build/mt7986/release/bl2.img'
+          assert 0<fip.stat().st_size<=0x200000
+          assert 0<bl2.stat().st_size<=0x100000
+          data=fip.read_bytes();assert struct.unpack_from('<I',data)[0]==0xaa640001
+          entries=[];off=16
+          while any(data[off:off+16]):
+              ident,start,size,flags=struct.unpack_from('<16sQQQ',data,off);off+=40
+              assert size>0 and start+size<=len(data)
+              entries.append({'uuid':ident.hex(),'offset':start,'size':size})
+          assert len(entries)>=2
+          dest=Path('artifacts');dest.mkdir(exist_ok=True)
+          for src,name in [(fip,'JuLiangTK-Redmi-AX6000-ubootmod-SP1-fip.bin'),(bl2,'JuLiangTK-Redmi-AX6000-ubootmod-SP1-bl2.img'),(u/'.config','u-boot.config'),(a/'build/.config','atf.config'),(Path('document/REDMI-AX6000-UBOOTMOD.md'),'README.md')]:shutil.copy2(src,dest/name)
+          meta={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'layout':'raw NAND / OpenWrt ubootmod','ubi_offset':'0x580000','ubi_size':'0x7a80000','fip_offset':'0x380000','production_volume':'fit','fit_configuration':'config-1','web_recovery':True,'hardware_boot_test':'not performed','fip_entries':entries}
+          (dest/'build-info.json').write_text(json.dumps(meta,indent=2)+'\n')
+          (dest/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in sorted(dest.iterdir()) if p.is_file()))
+          print(json.dumps(meta,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Redmi-AX6000-ubootmod-SP1-FIP-BL2-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Redmi-AX6000-ubootmod-logs-${{ github.run_id }}
+          path: build-logs/
+          if-no-files-found: ignore
