@@ -1,5 +1,5 @@
 name: Redmi AX6000 OpenWrt ubootmod bootloader
-run-name: 'Redmi AX6000 · raw NAND 0x580000 · FIT · SP1'
+run-name: 'Redmi AX6000 路 raw NAND 0x580000 路 FIT 路 SP1'
 on:
   workflow_dispatch:
   push:
@@ -23,9 +23,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Install build dependencies
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static python-is-python3 python3-pyelftools swig python3-dev bc uuid-dev
+          set -euo pipefail
+          . /etc/os-release
+          printf 'deb https://archive.ubuntu.com/ubuntu %s main universe multiverse restricted\ndeb https://archive.ubuntu.com/ubuntu %s-updates main universe multiverse restricted\ndeb https://security.ubuntu.com/ubuntu %s-security main universe multiverse restricted\n' "$VERSION_CODENAME" "$VERSION_CODENAME" "$VERSION_CODENAME" > /tmp/codex-ubuntu.list
+          sudo mkdir -p /tmp/codex-apt-lists/partial
+          apt_options=(-o Dir::Etc::sourcelist=/tmp/codex-ubuntu.list -o Dir::Etc::sourceparts=- -o Dir::State::lists=/tmp/codex-apt-lists -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=60)
+          sudo timeout 240 apt-get "${apt_options[@]}" update
+          sudo timeout 300 apt-get "${apt_options[@]}" install -y --no-install-recommends gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static python-is-python3 python3-pyelftools swig python3-dev bc uuid-dev
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
