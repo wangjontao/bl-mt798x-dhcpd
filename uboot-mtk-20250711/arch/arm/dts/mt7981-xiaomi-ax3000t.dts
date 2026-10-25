@@ -19,6 +19,7 @@
 		bootcmd = "mtkboardboot";
 		blink_led = "yellow:system";
 		system_led = "blue:system";
+		glbtn_default = "reset,mesh";
 	};
 
 	mtd-layout {

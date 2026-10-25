@@ -19,6 +19,7 @@
 		bootcmd = "mtkboardboot";
 		blink_led = "red:system";
 		system_led = "green:system";
+		glbtn_default = "reset";
 	};
 
 	memory@40000000 {
