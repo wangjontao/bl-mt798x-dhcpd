@@ -1,0 +1,67 @@
+name: AX3000T U-Bootmod Dual-Key U-Boot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/ax3000t-ubootmod-dualbutton
+    paths:
+      - .github/workflows/AX3000T-ubootmod-dualbutton.yml
+      - uboot-mtk-20250711/cmd/glbtn.c
+      - uboot-mtk-20250711/defenvs/xiaomi_mi-router-ax3000t_env
+      - uboot-mtk-20250711/configs-fit/mt7981_xiaomi_ax3000t*
+      - uboot-mtk-20250711/arch/arm/dts/mt7981-xiaomi-ax3000t*.dts
+      - build.sh
+      - Makefile
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build AX3000T ${{ matrix.label }} U-Boot
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: xiaomi_ax3000t
+            label: standard
+          - board: xiaomi_ax3000t-an8855
+            label: an8855
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends $(cat depends/ubuntu-22.04) rename tar
+
+      - name: Build FIP and BL2
+        env:
+          SOC: mt7981
+          VERSION: "2025"
+          VARIANT: ubootmod
+          FSTHEME: bootstrap
+          COPY_BL2: "1"
+          SILENT: "Y"
+        run: make build BOARD="${{ matrix.board }}"
+
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          cp output/* upload/
+          find upload -maxdepth 1 -type f -print0 | xargs -0 sha256sum > upload/SHA256SUMS
+          ls -lh upload
+
+      - name: Upload U-Boot artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AX3000T-ubootmod-${{ matrix.label }}-dualbutton-${{ github.run_id }}
+          path: upload/*
+          if-no-files-found: error
+          retention-days: 30

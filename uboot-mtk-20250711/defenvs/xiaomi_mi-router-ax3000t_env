@@ -12,6 +12,7 @@ bootfile_fip=openwrt-mediatek-filogic-xiaomi_mi-router-ax3000t-ubootmod-bl31-ubo
 bootfile_upg=openwrt-mediatek-filogic-xiaomi_mi-router-ax3000t-ubootmod-squashfs-sysupgrade.itb
 bootled_pwr=yellow:status
 bootled_rec=blue:status
+glbtn_key=reset,mesh
 bootmenu_confirm_return=askenv - Press ENTER to return to menu ; bootmenu 60
 bootmenu_default=0
 bootmenu_delay=0

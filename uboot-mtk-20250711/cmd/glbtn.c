@@ -279,6 +279,7 @@ static int do_glbtn(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[
 	const char *button_desc = NULL;
 	const char *key_env = NULL;
 	const char *reset_label = "reset";
+	const char *mesh_label = "mesh";
 	char key_buf[128];
 	char gpio_buf[128];
 	struct glbtn_key_item keys[GLBTN_KEYS_MAX];
@@ -306,7 +307,7 @@ static int do_glbtn(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[
 
 	key_env = env_get("glbtn_key");
 	if (!key_env)
-		key_env = "reset";
+		key_env = "reset,mesh";
 
 	gpio_label = env_get("glbtn_gpio");
 
@@ -343,6 +344,9 @@ static int do_glbtn(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[
 		glbtn_add_key(keys, &key_count, reset_label, active_low);
 	else if (!glbtn_has_label(keys, key_count, reset_label))
 		glbtn_add_key(keys, &key_count, reset_label, active_low);
+
+	if (!glbtn_has_label(keys, key_count, mesh_label))
+		glbtn_add_key(keys, &key_count, mesh_label, active_low);
 
 	if (key_count == 0) {
 		printf("No valid glbtn_key/glbtn_gpio found\n");
