@@ -1,0 +1,63 @@
+name: Philips HY3000 eMMC U-Boot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/hy3000-uboot-build
+    paths:
+      - .github/workflows/HY3000-UBoot-Build.yml
+      - uboot-mtk-20250711/configs-nonmbm/mt7981_philips_hy3000_defconfig
+      - uboot-mtk-20250711/arch/arm/dts/mt7981-philips-hy3000.dts
+      - uboot-mtk-20250711/cmd/glbtn.c
+      - atf-20250711/configs-nonmbm/mt7981_philips_hy3000_defconfig
+      - build.sh
+      - Makefile
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build HY3000 eMMC FIP and BL2
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential flex bison libssl-dev device-tree-compiler \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            qemu-user-static nodejs npm python3 rename tar
+
+      - name: Build FIP and BL2
+        env:
+          SOC: mt7981
+          VERSION: "2025"
+          VARIANT: nonmbm
+          FSTHEME: bootstrap
+          COPY_BL2: "1"
+          SILENT: "Y"
+        run: make build BOARD=philips_hy3000
+
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          cp output/*.bin output/*.img upload/
+          files=(upload/*.bin upload/*.img)
+          sha256sum "${files[@]}" > upload/SHA256SUMS
+          ls -lh upload
+
+      - name: Upload U-Boot artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Philips-HY3000-eMMC-Uboot-${{ github.run_id }}
+          path: upload/*
+          if-no-files-found: error
+          retention-days: 30
